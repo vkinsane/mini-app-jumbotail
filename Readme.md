@@ -6,45 +6,14 @@ One Spring Boot app (one package per service) on one PostgreSQL database. TVs in
 - [02 Database schema](#02-database-schema)
 - [03 API endpoints](#03-api-endpoints)
 - [04 How credits work](#04-how-credits-work)
+- [05 Assumptions](#05-assumptions)
+- [06 Limitations](#06-limitations)
 
 ---
 
 ## 01 Architecture diagram
 
-```mermaid
-flowchart LR
-    subgraph Store["Inside the store"]
-        Owner["Store owner<br/>(Owner console)"]
-        subgraph TVs["TVs (each runs the J24 SDK)"]
-            SDK1["TV 1<br/>playlist cache + play-log queue"]
-            SDK2["TV 2 … TV 5"]
-        end
-    end
-
-    subgraph Backend["J24 backend (one Spring Boot app)"]
-        StoreMgr["Store Manager<br/>store"]
-        ScreenMgr["Screen Manager<br/>screen, slot_booking"]
-        AdMgr["Ad Manager<br/>ad, ad_status_history"]
-        CreditMgr["Credit Manager<br/>wallet, credit_transactions,<br/>ad_daily_billing"]
-        AdServer["Ad Server<br/>/sync, play_log"]
-        Jobs["Jobs (every minute)<br/>settlement, screen health"]
-    end
-
-    DB[("PostgreSQL")]
-    Gateway["Payment gateway<br/>(mocked)"]
-    Ops["J24 ops"]
-
-    Owner -->|"onboard, add screens"| StoreMgr & ScreenMgr
-    Owner -->|"buy credits"| CreditMgr
-    CreditMgr -.-> Gateway
-    Owner -->|"create / pause / cancel ad"| AdMgr
-    AdMgr -->|"book / free slots"| ScreenMgr
-    AdMgr -->|"hold / release credits"| CreditMgr
-    SDK1 & SDK2 -->|"every 5 min: upload plays,<br/>get 3-day playlist"| AdServer
-    Jobs -->|"charge what aired,<br/>return the rest"| CreditMgr
-    Jobs -->|"screen offline > 10 min"| Ops
-    StoreMgr & ScreenMgr & AdMgr & CreditMgr & AdServer & Jobs --- DB
-```
+![J24 backend architecture](docs/architecture.svg)
 
 | Service | Owns | Does |
 |---|---|---|
@@ -326,42 +295,42 @@ All paths start with `/api/v1`. Errors always come back as `{code, message, ...d
 
 ### Store and screens
 
-- **Onboard store**: `POST /stores` `{name, ownerName, phone, address}` → creates the store and an empty wallet, returns `{storeId}`.
-- **List stores**: `GET /stores` → `[{storeId, name, ownerName, phone, address}]`.
-- **Add a TV**: `POST /stores/{storeId}/screens` `{name, placementType, widthPixels, heightPixels}` → the server makes the id and returns the screen.
-- **List TVs**: `GET /stores/{storeId}/screens` → `[{screenId, name, placementType, slotsPerLoop, slotDurationSeconds, status, online, lastSeenAt}]`. `online` means it synced in the last 10 minutes.
+- **Onboard store**: `POST /stores` `{name, ownerName, ...}` → creates the store and an empty wallet, returns `{storeId}`.
+- **List stores**: `GET /stores` → `[{storeId, name, ...}]`.
+- **Add a TV**: `POST /stores/{storeId}/screens` `{name, placementType, ...}` → the server makes the id and returns the screen.
+- **List TVs**: `GET /stores/{storeId}/screens` → `[{screenId, name, status, online, ...}]`. `online` means it synced in the last 10 minutes.
 - **Switch a TV on or off for booking**: `PATCH /screens/{screenId}` `{status: "ACTIVE" | "INACTIVE"}` → the updated screen.
 
 ### Credits
 
-- **Buy credits**: `POST /stores/{storeId}/credits/purchase` `{credits}` → the mock gateway succeeds at once; credits go to `available` with a PURCHASE row. Returns `{storeId, available, held}`.
-- **Balance**: `GET /stores/{storeId}/wallet` → `{storeId, available, held}`.
-- **Statement**: `GET /stores/{storeId}/wallet/transactions` → `[{id, type, amount, adId, createdAt}]`, newest first.
+- **Buy credits**: `POST /stores/{storeId}/credits/purchase` `{credits}` → the mock gateway succeeds at once; credits go to `available` with a PURCHASE row. Returns `{available, held}`.
+- **Balance**: `GET /stores/{storeId}/wallet` → `{available, held}`.
+- **Statement**: `GET /stores/{storeId}/wallet/transactions` → `[{type, amount, adId, ...}]`, newest first.
 
 ### Ads
 
-- **Check availability**: `POST /ads/availability` `{storeId, screenIds, startTime, endTime}` → `{screens: [{screenId, screenName, freeSlots}], playsPerScreen, totalCost, available, missingCredits}`. Nothing is reserved.
-- **Publish**: `POST /ads` (multipart: an `ad` JSON part `{storeId, name, headline, startTime, endTime, screens: [{screenId, slotIndex?}]}` and an `image` file; optional `Idempotency-Key` header). In one transaction it locks the wallet, locks the TVs in id order, re-checks slots, books one slot per TV and holds the full cost.
-  - `201 {adId, totalCost, bookings: [{screenId, slotIndex}]}`
-  - `402 INSUFFICIENT_CREDITS {totalCost, available, missingCredits}`
+- **Check availability**: `POST /ads/availability` `{storeId, screenIds, startTime, endTime}` → `{screens: [{screenId, freeSlots}], totalCost, missingCredits, ...}`. Nothing is reserved.
+- **Publish**: `POST /ads` (multipart: an `ad` JSON part `{storeId, startTime, endTime, screens: [{screenId, slotIndex?}], ...}` and an `image` file; optional `Idempotency-Key` header). In one transaction it locks the wallet, locks the TVs in id order, re-checks slots, books one slot per TV and holds the full cost.
+  - `201 {adId, totalCost, ...}`
+  - `402 INSUFFICIENT_CREDITS {missingCredits, ...}`
   - `409 SLOT_TAKEN`: someone booked the slot since the availability check.
 - **Pause / resume**: `POST /ads/{adId}/pause`, `POST /ads/{adId}/resume` → the ad summary. No credits move now; plays skipped while paused are returned at settlement. The slot stays booked.
-- **Cancel**: `POST /ads/{adId}/cancel` → frees the slots and returns credits for days that haven't started, right away: `{adId, status: "CANCELLED", releasedCredits}`.
-- **List ads**: `GET /ads?storeId=` → `[{adId, name, headline, status, startTime, endTime, totalCost, hasImage, createdAt}]`. Status can be ACTIVE, PAUSED, CANCELLED or ENDED.
-- **Ad detail**: `GET /ads/{adId}` → `{ad, pricePerPlay, playsReceived, screens: [{screenId, screenName, slotIndex, active}], dailyBilling: [{date, bookedPlays, held, status, deducted, released, settledAt}]}`.
+- **Cancel**: `POST /ads/{adId}/cancel` → frees the slots and returns credits for days that haven't started, right away: `{status: "CANCELLED", releasedCredits, ...}`.
+- **List ads**: `GET /ads?storeId=` → `[{adId, name, status, ...}]`. Status can be ACTIVE, PAUSED, CANCELLED or ENDED.
+- **Ad detail**: `GET /ads/{adId}` → `{ad, screens: [{screenId, slotIndex, ...}], dailyBilling: [{date, held, deducted, released, ...}], ...}`.
 - **Ad image**: `GET /ads/{adId}/image` → the image bytes, cached for 7 days.
 
 ### Ad Server (called by the TV's SDK)
 
-- **Sync**: `POST /screens/{screenId}/sync` `{playLogs: [{playId, adId, slotIndex, playedAt}]}` (up to 500 per call, oldest first). The TV calls it every 5 minutes, on start and on reconnect.
+- **Sync**: `POST /screens/{screenId}/sync` `{playLogs: [{playId, adId, playedAt, ...}]}` (up to 500 per call, oldest first). The TV calls it every 5 minutes, on start and on reconnect.
   - Returns `{receivedPlayIds, serverTime, playlist}`.
-  - `playlist` = `{validUntil (now + 3 days), slotsPerLoop, slotDurationSeconds, screenStatus, items: [{adId, slotIndex, name, headline, startTime, endTime, imageUrl}]}`, always the full 3 days.
+  - `playlist` = `{validUntil (now + 3 days), items: [{adId, slotIndex, startTime, endTime, imageUrl, ...}], ...}`, always the full 3 days.
   - The TV removes the received ids from its queue and plays by clock: slot = (seconds since midnight IST ÷ 10) mod 6.
 
 ### J24 ops (demo helpers)
 
 - **Run settlement now**: `POST /ops/settlement/run?skipGrace=false` → `{settled, deducted, released}`. `skipGrace=true` doesn't wait for offline TVs.
-- **Screen alerts**: `GET /ops/alerts` → `[{screenId, storeId, screenName, reason, since}]` for TVs that are inactive or haven't synced in 10 minutes.
+- **Screen alerts**: `GET /ops/alerts` → `[{screenId, reason, since, ...}]` for TVs that are inactive or haven't synced in 10 minutes.
 
 ---
 
@@ -428,3 +397,46 @@ For that day:
 | Plays uploaded after their day settled | Stored, not charged. J24 absorbs it |
 | Same plays uploaded twice | `play_id` is the primary key, so each play counts once |
 | Two publishes at once | The wallet row lock makes the second wait. It sees the lower balance and gets `402` |
+
+---
+
+## 05 Assumptions
+
+**Ads and screens**
+- Image ads only: one image and one headline per ad.
+- Each screen loops through 6 slots of 10 seconds (one minute per loop), so a booked ad plays once a minute.
+- An ad runs in one continuous range, start_time → end_time (e.g. 1 Nov 09:00 → 3 Nov 21:00), and plays for that whole range. No store hours or daily windows.
+- An ad gets one slot on each screen it picks. Booking a slot blocks it for that range, so no other ad can use it. This is what lets screens pre-fetch the next 3 days.
+- Each store has one outlet. Multi-outlet stores would need store_id + outlet_id.
+- Screen ids are UUIDs made by the server.
+
+**Credits**
+- 1 credit = ₹1 = 1 play. Whole numbers only. Price per play is fixed at 1.
+- Buying credits goes through a mock gateway that succeeds at once (no webhook).
+- The full cost is held when the ad is published. After each IST day ends, the plays that actually aired (while ACTIVE, never more than booked per screen) are charged and the rest is released.
+- Credits don't expire and are never refunded as money.
+
+**Screens and sync**
+- Screens pull; the server never pushes. The J24 SDK on each TV syncs every 5 minutes, on start, and on reconnect.
+- Every sync uploads queued play logs (up to 500, oldest first) and gets back the full 3-day playlist and the server time.
+- The TV picks the slot from the clock (seconds since midnight IST ÷ 10, mod 6), corrected by the server-time offset.
+- All times are store-local IST.
+
+---
+
+## 06 Limitations
+
+**Product**
+- A screen marked INACTIVE while ads are booked on it: the ads are not moved to another screen. That screen's plays stop, and its credits are released at settlement.
+- Pause keeps the slot booked. Only cancel frees it.
+- Pause, resume and cancel reach a TV only on its next sync, so it may keep showing the old state for up to 5 minutes. Plays made while paused or cancelled are not charged.
+- A TV offline for more than 3 days runs out of playlist and shows house content only.
+- Plays uploaded after their day has settled (more than 72 hours late) are stored but not charged. J24 absorbs them.
+- If an ad's image fails to load, the TV shows house content and writes no play log, so the owner isn't charged. The owner isn't told about it either.
+
+**Technical (mock scope)**
+- One Spring Boot app and one database instead of separate services, so publish (book slots + hold credits) is a single DB transaction. Split services would need a saga.
+- Images are stored in the `ad` table (BYTEA), not in object storage behind a CDN.
+- No login or authorisation: any caller can act for any store.
+- Screen-health alerts are only listed at `GET /ops/alerts`. No SMS or email is sent to the owner.
+- `Idempotency-Key` on publish is optional. Without it, a double-click can create two ads (the second still needs free slots and credits).

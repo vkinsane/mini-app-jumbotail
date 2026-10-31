@@ -243,7 +243,17 @@ export default function CreateAdCard(props: {
                         }
                       />
                     }
-                    label={screen.name}
+                    label={
+                      <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
+                        <span>{screen.name}</span>
+                        <Chip
+                          size="small"
+                          label={screen.online ? 'Online' : 'Offline'}
+                          color={screen.online ? 'success' : 'default'}
+                          variant="outlined"
+                        />
+                      </Stack>
+                    }
                   />
                   {!free && !checkError && (
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', pl: 4 }}>

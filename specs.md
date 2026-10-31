@@ -209,9 +209,9 @@ the screen can drop it from its queue.
 ### J24 ops (demo helpers)
 
 - **`POST /ops/settlement/run?skipGrace=false`** → `{ "settled": 1, "deducted": 4, "released": 0 }`. Runs settlement now. `skipGrace=true` doesn't wait for offline screens.
-- **`GET /ops/alerts`** → `[{ "screenId": "…", "storeId": "…", "screenName": "Aisle 2 TV", "reason": "not seen since …", "since": "…" }]`
+- **`GET /ops/alerts`** → `[{ "screenId": "…", "storeId": "…", "screenName": "Dairy Aisle TV", "reason": "not seen since …", "since": "…" }]`
 
-## 7. Screen SDK (simulated in the TV wall)
+## 7. Screen SDK (simulated on the Screens page)
 
 - **Pull, never push.** The screen calls `/sync`; the server never calls the screen.
 - **Cache.** Keeps the playlist, the queued play logs and the clock offset locally (localStorage in the

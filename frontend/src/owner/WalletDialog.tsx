@@ -2,14 +2,22 @@ import { useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Card from '@mui/material/Card'
-import CardContent from '@mui/material/CardContent'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { api, errorMessage, type Wallet } from '../api'
 
-export default function WalletCard(props: { storeId: string; wallet: Wallet | null; onChanged: () => void }) {
+export default function WalletDialog(props: {
+  open: boolean
+  onClose: () => void
+  storeId: string
+  wallet: Wallet | null
+  onChanged: () => void
+}) {
   const [credits, setCredits] = useState('5000')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -28,11 +36,9 @@ export default function WalletCard(props: { storeId: string; wallet: Wallet | nu
   }
 
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="h6" gutterBottom>
-          Wallet
-        </Typography>
+    <Dialog open={props.open} onClose={props.onClose} fullWidth maxWidth="xs">
+      <DialogTitle>Wallet</DialogTitle>
+      <DialogContent>
         <Stack direction="row" sx={{ gap: 2, mb: 2 }}>
           <Amount label="Available" value={props.wallet?.available} hint="free to spend" />
           <Amount label="Held" value={props.wallet?.held} hint="reserved for booked ads" />
@@ -42,7 +48,7 @@ export default function WalletCard(props: { storeId: string; wallet: Wallet | nu
             {error}
           </Alert>
         )}
-        <Stack direction="row" sx={{ gap: 1 }}>
+        <Stack direction="row" sx={{ gap: 1, pt: 1 }}>
           <TextField
             size="small"
             type="number"
@@ -58,8 +64,11 @@ export default function WalletCard(props: { storeId: string; wallet: Wallet | nu
         <Typography variant="caption" color="text.secondary">
           Mock payment gateway: the charge always succeeds instantly.
         </Typography>
-      </CardContent>
-    </Card>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={props.onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
   )
 }
 

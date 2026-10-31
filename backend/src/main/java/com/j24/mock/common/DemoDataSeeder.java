@@ -44,8 +44,8 @@ public class DemoDataSeeder implements ApplicationRunner {
         List.of(
                 new String[] {"Entrance TV", "ENTRANCE"},
                 new String[] {"Checkout TV", "NEAR_CHECKOUT"},
-                new String[] {"Aisle 1 TV", "AISLE"},
-                new String[] {"Aisle 2 TV", "AISLE"},
+                new String[] {"Snacks Aisle TV", "AISLE"},
+                new String[] {"Dairy Aisle TV", "AISLE"},
                 new String[] {"Billing Counter TV", "NEAR_CHECKOUT"}
         ).forEach(screen -> screens.create(storeId, screen[0], screen[1], 1920, 1080));
         credits.purchase(storeId, 10_000);

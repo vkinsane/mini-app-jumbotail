@@ -4,10 +4,6 @@ import AppBar from '@mui/material/AppBar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
 import MenuItem from '@mui/material/MenuItem'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -15,8 +11,11 @@ import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Toolbar from '@mui/material/Toolbar'
 import Typography from '@mui/material/Typography'
-import { api, errorMessage, type Store } from './api'
+import AccountBalanceWalletOutlined from '@mui/icons-material/AccountBalanceWalletOutlined'
+import OpenInNew from '@mui/icons-material/OpenInNew'
+import { api, errorMessage, type Store, type Wallet } from './api'
 import OwnerConsole from './owner/OwnerConsole'
+import WalletDialog from './owner/WalletDialog'
 import TvWall from './tv/TvWall'
 
 type Page = 'owner' | 'tv'
@@ -28,7 +27,15 @@ export default function App() {
   const [stores, setStores] = useState<Store[]>([])
   const [storeId, setStoreId] = useState<string>(() => localStorage.getItem('j24.storeId') ?? '')
   const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
+  const [wallet, setWallet] = useState<Wallet | null>(null)
+  const [walletVersion, setWalletVersion] = useState(0)
+  const [walletOpen, setWalletOpen] = useState(false)
+  const refreshWallet = useCallback(() => setWalletVersion((v) => v + 1), [])
+
+  useEffect(() => {
+    if (!storeId) return
+    api.wallet(storeId).then(setWallet, () => setWallet(null))
+  }, [storeId, walletVersion])
 
   const loadStores = useCallback(async (select?: string) => {
     try {
@@ -53,6 +60,11 @@ export default function App() {
   }, [loadStores])
 
   const changePage = (next: Page) => {
+    // The Screens page opens in its own browser tab, so it can run next to the owner console.
+    if (next === 'tv' && page !== 'tv') {
+      window.open('/#tv', '_blank', 'noopener')
+      return
+    }
     window.location.hash = next === 'tv' ? 'tv' : ''
     setPage(next)
   }
@@ -66,7 +78,7 @@ export default function App() {
           </Typography>
           <Tabs value={page} onChange={(_, value: Page) => changePage(value)} sx={{ flex: 1, minWidth: 240 }}>
             <Tab value="owner" label="Owner console" />
-            <Tab value="tv" label="TV wall" />
+            <Tab value="tv" label="Screens" icon={<OpenInNew fontSize="small" />} iconPosition="end" sx={{ minHeight: 48 }} />
           </Tabs>
           <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
             <TextField
@@ -86,9 +98,11 @@ export default function App() {
                 </MenuItem>
               ))}
             </TextField>
-            <Button variant="outlined" onClick={() => setCreating(true)}>
-              New store
-            </Button>
+            {storeId && (
+              <Button variant="contained" startIcon={<AccountBalanceWalletOutlined />} onClick={() => setWalletOpen(true)}>
+                {wallet ? `${wallet.available.toLocaleString('en-IN')} credits` : 'Wallet'}
+              </Button>
+            )}
           </Stack>
         </Toolbar>
       </AppBar>
@@ -99,64 +113,18 @@ export default function App() {
             {error}
           </Alert>
         )}
-        {storeId && page === 'owner' && <OwnerConsole key={storeId} storeId={storeId} />}
+        {storeId && page === 'owner' && <OwnerConsole key={storeId} storeId={storeId} walletVersion={walletVersion} onWalletChanged={refreshWallet} />}
         {storeId && page === 'tv' && <TvWall key={storeId} storeId={storeId} />}
-        {!storeId && !error && <Alert severity="info">Create a store to get started.</Alert>}
+        {!storeId && !error && <Alert severity="info">No stores yet. Start the backend with demo data to seed two stores.</Alert>}
       </Container>
 
-      <CreateStoreDialog
-        open={creating}
-        onClose={() => setCreating(false)}
-        onCreated={(id) => {
-          setCreating(false)
-          void loadStores(id)
-        }}
+      <WalletDialog
+        open={walletOpen}
+        onClose={() => setWalletOpen(false)}
+        storeId={storeId}
+        wallet={wallet}
+        onChanged={refreshWallet}
       />
     </Box>
-  )
-}
-
-function CreateStoreDialog(props: { open: boolean; onClose: () => void; onCreated: (storeId: string) => void }) {
-  const [form, setForm] = useState({ name: '', ownerName: '', phone: '', address: '' })
-  const [error, setError] = useState<string | null>(null)
-
-  const submit = async () => {
-    try {
-      const { storeId } = await api.createStore(form)
-      setForm({ name: '', ownerName: '', phone: '', address: '' })
-      setError(null)
-      props.onCreated(storeId)
-    } catch (e) {
-      setError(errorMessage(e))
-    }
-  }
-
-  return (
-    <Dialog open={props.open} onClose={props.onClose} fullWidth maxWidth="xs">
-      <DialogTitle>Onboard a store</DialogTitle>
-      <DialogContent>
-        <Stack sx={{ gap: 2, pt: 1 }}>
-          {error && <Alert severity="error">{error}</Alert>}
-          <TextField label="Store name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <TextField
-            label="Owner name"
-            required
-            value={form.ownerName}
-            onChange={(e) => setForm({ ...form, ownerName: e.target.value })}
-          />
-          <TextField label="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-          <TextField label="Address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
-          <Typography variant="caption" color="text.secondary">
-            The store starts with an empty wallet. Add screens and buy credits from the owner console.
-          </Typography>
-        </Stack>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={props.onClose}>Cancel</Button>
-        <Button variant="contained" onClick={() => void submit()} disabled={!form.name || !form.ownerName}>
-          Create
-        </Button>
-      </DialogActions>
-    </Dialog>
   )
 }
