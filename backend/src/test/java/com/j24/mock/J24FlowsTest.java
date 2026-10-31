@@ -135,6 +135,32 @@ class J24FlowsTest {
     }
 
     @Test
+    void oneScreenCanHoldSeveralSlotsOfTheSameAd() {
+        credits.purchase(storeId, 100);
+        Instant start = nextMinute();
+        Published ad = ads.publish(new AdDraft(storeId, "A", "A", start, start.plus(Duration.ofMinutes(10)),
+                List.of(new ScreenChoice(tv1, 1), new ScreenChoice(tv1, 4))), null, null);
+        assertThat(ad.bookings()).hasSize(2);
+        assertThat(credits.getWallet(storeId)).isEqualTo(new Wallet(storeId, 80, 20)); // 10 plays x 2 slots
+
+        shiftAdIntoPast(ad.adId(), Duration.ofMinutes(15));
+        Instant windowStart = start.minus(Duration.ofMinutes(15));
+        List<PlayLog> logs = new ArrayList<>();
+        for (int minute = 0; minute < 10; minute++) {
+            logs.add(new PlayLog(UUID.randomUUID(), ad.adId(), 1, windowStart.plus(Duration.ofSeconds(60L * minute + 15))));
+        }
+        for (int minute = 0; minute < 4; minute++) { // slot 4 aired only 4 times
+            logs.add(new PlayLog(UUID.randomUUID(), ad.adId(), 4, windowStart.plus(Duration.ofSeconds(60L * minute + 45))));
+        }
+        adServer.sync(tv1, logs);
+
+        var result = settlement.run(false);
+
+        assertThat(result.deducted()).isEqualTo(10 + 4);
+        assertThat(result.released()).isEqualTo(6);
+    }
+
+    @Test
     void settlementWaitsForOfflineScreens() {
         credits.purchase(storeId, 100);
         Instant start = nextMinute();

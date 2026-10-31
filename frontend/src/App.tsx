@@ -76,10 +76,15 @@ export default function App() {
           <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
             J24 Screen Ads
           </Typography>
-          <Tabs value={page} onChange={(_, value: Page) => changePage(value)} sx={{ flex: 1, minWidth: 240 }}>
-            <Tab value="owner" label="Owner console" />
-            <Tab value="tv" label="Screens" icon={<OpenInNew fontSize="small" />} iconPosition="end" sx={{ minHeight: 48 }} />
-          </Tabs>
+          {/* The Screens page runs in its own browser tab, like the TVs in the store: no console navigation or wallet. */}
+          {page === 'owner' ? (
+            <Tabs value={page} onChange={(_, value: Page) => changePage(value)} sx={{ flex: 1, minWidth: 240 }}>
+              <Tab value="owner" label="Owner console" />
+              <Tab value="tv" label="Screens" icon={<OpenInNew fontSize="small" />} iconPosition="end" sx={{ minHeight: 48 }} />
+            </Tabs>
+          ) : (
+            <Box sx={{ flex: 1 }} />
+          )}
           <Stack direction="row" sx={{ gap: 1, alignItems: 'center' }}>
             <TextField
               select
@@ -98,7 +103,7 @@ export default function App() {
                 </MenuItem>
               ))}
             </TextField>
-            {storeId && (
+            {storeId && page === 'owner' && (
               <Button variant="contained" startIcon={<AccountBalanceWalletOutlined />} onClick={() => setWalletOpen(true)}>
                 {wallet ? `${wallet.available.toLocaleString('en-IN')} credits` : 'Wallet'}
               </Button>

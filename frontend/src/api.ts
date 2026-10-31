@@ -88,7 +88,7 @@ export type PlayLog = { playId: string; adId: string; slotIndex: number; playedA
 
 export type SyncResult = { receivedPlayIds: string[]; serverTime: string; playlist: Playlist }
 
-export type OpsAlert = { screenId: string; storeId: string; screenName: string; reason: string; since: string }
+export type AdminAlert = { screenId: string; storeId: string; screenName: string; reason: string; since: string }
 
 export class ApiError extends Error {
   status: number
@@ -167,9 +167,9 @@ export const api = {
   runSettlement: (skipGrace: boolean) =>
     request<{ settled: number; deducted: number; released: number }>(
       'POST',
-      `/ops/settlement/run?skipGrace=${skipGrace}`,
+      `/admin/settlement/run?skipGrace=${skipGrace}`,
     ),
-  alerts: () => request<OpsAlert[]>('GET', '/ops/alerts'),
+  alerts: () => request<AdminAlert[]>('GET', '/admin/alerts'),
 }
 
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e))

@@ -9,7 +9,9 @@ import Switch from '@mui/material/Switch'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import type { Screen } from '../api'
+import TerminalOutlined from '@mui/icons-material/TerminalOutlined'
 import { useScreenSdk, type Showing } from './useScreenSdk'
+import SdkLogDialog from './SdkLogDialog'
 
 const placementLabel: Record<Screen['placementType'], string> = {
   ENTRANCE: 'Entrance',
@@ -31,7 +33,8 @@ const time = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString() :
 export default function TvScreen({ screen, syncIntervalMs }: { screen: Screen; syncIntervalMs: number }) {
   const [online, setOnline] = useState(true)
   const [powered, setPowered] = useState(true)
-  const { state, syncNow, resetCache } = useScreenSdk(screen.screenId, { online, powered, syncIntervalMs })
+  const [showLogs, setShowLogs] = useState(false)
+  const { state } = useScreenSdk(screen.screenId, { online, powered, syncIntervalMs })
   const slots = Array.from({ length: state.playlist?.slotsPerLoop ?? screen.slotsPerLoop }, (_, i) => i)
   const slotSeconds = state.playlist?.slotDurationSeconds ?? screen.slotDurationSeconds
   const [clockMs, setClockMs] = useState(() => Date.now())
@@ -155,13 +158,29 @@ export default function TvScreen({ screen, syncIntervalMs }: { screen: Screen; s
           control={<Switch size="small" checked={powered} onChange={(e) => setPowered(e.target.checked)} />}
           label={<Typography variant="caption">Power</Typography>}
         />
-        <Button size="small" onClick={() => void syncNow()} disabled={!online || !powered}>
-          Sync now
-        </Button>
-        <Button size="small" color="inherit" onClick={resetCache}>
-          Clear cache
-        </Button>
       </Stack>
+
+      <Button
+        size="small"
+        color="inherit"
+        variant="outlined"
+        startIcon={<TerminalOutlined fontSize="small" />}
+        onClick={() => setShowLogs(true)}
+        sx={{ borderColor: 'divider', color: 'text.secondary', justifyContent: 'space-between' }}
+        endIcon={<Chip size="small" label={state.events.length} sx={{ height: 18, fontSize: 11 }} />}
+      >
+        <Box component="span" sx={{ flex: 1, textAlign: 'left' }}>
+          Logs
+        </Box>
+      </Button>
+      <SdkLogDialog
+        open={showLogs}
+        onClose={() => setShowLogs(false)}
+        screenName={screen.name}
+        status={!powered ? 'Power off' : online ? 'Online' : 'Offline'}
+        queued={state.queue.length}
+        events={state.events}
+      />
     </Paper>
   )
 }
@@ -238,3 +257,4 @@ function TvFrame({ showing }: { showing: Showing }) {
     </Box>
   )
 }
+

@@ -153,26 +153,32 @@ public class ScreenService {
     }
 
     /**
-     * Picks a slot per screen: the requested one if still free, else the lowest free one.
+     * Picks the slots on each screen: each requested one if still free; a null request takes the lowest free one.
+     * The same slot asked for twice is booked once.
      * Must run after {@link #lockForBooking}, so the answer can't change before we insert.
      */
-    public List<Booking> chooseSlots(List<Screen> lockedScreens, Map<UUID, Integer> requestedSlots,
+    public List<Booking> chooseSlots(List<Screen> lockedScreens, Map<UUID, List<Integer>> requestedSlots,
                                      Instant start, Instant end) {
         List<Booking> bookings = new ArrayList<>();
         for (Screen screen : lockedScreens) {
             List<Integer> free = freeSlots(screen, start, end);
-            Integer requested = requestedSlots.get(screen.screenId());
-            if (requested != null && !free.contains(requested)) {
-                throw new ApiException(HttpStatus.CONFLICT, "SLOT_TAKEN",
-                        "slot " + requested + " on " + screen.name() + " was just booked, pick another",
-                        Map.of("screenId", screen.screenId(), "freeSlots", free));
+            Set<Integer> chosen = new TreeSet<>();
+            for (Integer requested : requestedSlots.get(screen.screenId())) {
+                if (requested != null && !free.contains(requested)) {
+                    throw new ApiException(HttpStatus.CONFLICT, "SLOT_TAKEN",
+                            "slot " + requested + " on " + screen.name() + " was just booked, pick another",
+                            Map.of("screenId", screen.screenId(), "freeSlots", free));
+                }
+                Integer slot = requested != null ? requested
+                        : free.stream().filter(s -> !chosen.contains(s)).findFirst().orElse(null);
+                if (slot == null) {
+                    throw new ApiException(HttpStatus.CONFLICT, "SLOT_TAKEN",
+                            "no free slot on " + screen.name() + " for this time range",
+                            Map.of("screenId", screen.screenId(), "freeSlots", free));
+                }
+                chosen.add(slot);
             }
-            if (free.isEmpty()) {
-                throw new ApiException(HttpStatus.CONFLICT, "SLOT_TAKEN",
-                        "no free slot on " + screen.name() + " for this time range",
-                        Map.of("screenId", screen.screenId(), "freeSlots", free));
-            }
-            bookings.add(new Booking(screen.screenId(), requested != null ? requested : free.getFirst()));
+            chosen.forEach(slot -> bookings.add(new Booking(screen.screenId(), slot)));
         }
         return bookings;
     }

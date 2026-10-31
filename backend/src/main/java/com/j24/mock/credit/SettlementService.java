@@ -125,8 +125,8 @@ public class SettlementService {
         }
 
         long playsPerScreen = StoreTime.minutesBetween(windowStart, windowEnd);
-        long billablePlays = countActivePlaysPerScreen(day.adId(), windowStart, windowEnd).values().stream()
-                .mapToLong(plays -> Math.min(plays, playsPerScreen)) // never bill a screen more than it booked
+        long billablePlays = countActivePlaysPerSlot(day.adId(), windowStart, windowEnd).values().stream()
+                .mapToLong(plays -> Math.min(plays, playsPerScreen)) // never bill a booked slot more than once a minute
                 .sum();
         long deducted = Math.min(billablePlays * day.pricePerPlay(), day.held());
         long released = day.held() - deducted;
@@ -152,24 +152,25 @@ public class SettlementService {
                 .single();
     }
 
-    /** Plays inside the window, on a screen the ad was booked on, while the ad was ACTIVE. */
-    private Map<UUID, Long> countActivePlaysPerScreen(UUID adId, Instant from, Instant to) {
+    /** Plays inside the window, per booked (screen, slot) of the ad, while the ad was ACTIVE. */
+    private Map<String, Long> countActivePlaysPerSlot(UUID adId, Instant from, Instant to) {
         return jdbc.sql("""
-                        SELECT p.screen_id, COUNT(*) AS plays
+                        SELECT p.screen_id, p.slot_index, COUNT(*) AS plays
                         FROM play_log p
                         WHERE p.ad_id = :adId
                           AND p.played_at >= :from AND p.played_at < :to
                           AND EXISTS (SELECT 1 FROM slot_booking sb
-                                      WHERE sb.ad_id = p.ad_id AND sb.screen_id = p.screen_id)
+                                      WHERE sb.ad_id = p.ad_id AND sb.screen_id = p.screen_id
+                                        AND sb.slot_index = p.slot_index)
                           AND (SELECT h.status FROM ad_status_history h
                                WHERE h.ad_id = p.ad_id AND h.changed_at <= p.played_at
                                ORDER BY h.changed_at DESC, h.id DESC LIMIT 1) = 'ACTIVE'
-                        GROUP BY p.screen_id
+                        GROUP BY p.screen_id, p.slot_index
                         """)
                 .param("adId", adId)
                 .param("from", ts(from))
                 .param("to", ts(to))
-                .query((rs, i) -> Map.entry(uuid(rs, "screen_id"), rs.getLong("plays")))
+                .query((rs, i) -> Map.entry(uuid(rs, "screen_id") + "/" + rs.getInt("slot_index"), rs.getLong("plays")))
                 .list()
                 .stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));

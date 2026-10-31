@@ -7,6 +7,8 @@ export default defineConfig({
   server: {
     port: 5180,
     strictPort: true,
+    // Let the dev server answer through an ngrok tunnel.
+    allowedHosts: ['.ngrok-free.app', '.ngrok-free.dev', '.ngrok.app'],
     proxy: {
       '/api': 'http://localhost:8090',
     },

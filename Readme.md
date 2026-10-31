@@ -310,7 +310,7 @@ All paths start with `/api/v1`. Errors always come back as `{code, message, ...d
 ### Ads
 
 - **Check availability**: `POST /ads/availability` `{storeId, screenIds, startTime, endTime}` → `{screens: [{screenId, freeSlots}], totalCost, missingCredits, ...}`. Nothing is reserved.
-- **Publish**: `POST /ads` (multipart: an `ad` JSON part `{storeId, startTime, endTime, screens: [{screenId, slotIndex?}], ...}` and an `image` file; optional `Idempotency-Key` header). In one transaction it locks the wallet, locks the TVs in id order, re-checks slots, books one slot per TV and holds the full cost.
+- **Publish**: `POST /ads` (multipart: an `ad` JSON part `{storeId, startTime, endTime, screens: [{screenId, slotIndex?}], ...}` and an `image` file; optional `Idempotency-Key` header). In one transaction it locks the wallet, locks the TVs in id order, re-checks slots, books every chosen slot and holds the full cost. Repeat a `screenId` to book more than one slot on that TV.
   - `201 {adId, totalCost, ...}`
   - `402 INSUFFICIENT_CREDITS {missingCredits, ...}`
   - `409 SLOT_TAKEN`: someone booked the slot since the availability check.
@@ -327,10 +327,10 @@ All paths start with `/api/v1`. Errors always come back as `{code, message, ...d
   - `playlist` = `{validUntil (now + 3 days), items: [{adId, slotIndex, startTime, endTime, imageUrl, ...}], ...}`, always the full 3 days.
   - The TV removes the received ids from its queue and plays by clock: slot = (seconds since midnight IST ÷ 10) mod 6.
 
-### J24 ops (demo helpers)
+### J24 admin (demo helpers)
 
-- **Run settlement now**: `POST /ops/settlement/run?skipGrace=false` → `{settled, deducted, released}`. `skipGrace=true` doesn't wait for offline TVs.
-- **Screen alerts**: `GET /ops/alerts` → `[{screenId, reason, since, ...}]` for TVs that are inactive or haven't synced in 10 minutes.
+- **Run settlement now**: `POST /admin/settlement/run?skipGrace=false` → `{settled, deducted, released}`. `skipGrace=true` doesn't wait for offline TVs.
+- **Screen alerts**: `GET /admin/alerts` → `[{screenId, reason, since, ...}]` for TVs that are inactive or haven't synced in 10 minutes.
 
 ---
 
@@ -365,7 +365,7 @@ sequenceDiagram
 
 ### 2. Assigned (held at publish)
 
-- Cost = plays per TV × number of TVs × 1 credit. A TV plays the ad once a minute, so 12 hours = 720 plays per TV, and 2 TVs = **1,440**.
+- Cost = plays per slot × number of slots booked × 1 credit. Each slot plays the ad once a minute, so 12 hours = 720 plays per slot, and 2 slots = **1,440**.
 - In the publish transaction:
   - lock the wallet;
   - if `available < cost`, return `402` with `missingCredits`;
@@ -382,7 +382,7 @@ The settlement job runs every minute. It picks a HELD `ad_daily_billing` row whe
 
 For that day:
 
-- **Charged** = plays in `play_log` while the ad was ACTIVE (from `ad_status_history`), capped at that TV's booked plays.
+- **Charged** = plays in `play_log` while the ad was ACTIVE (from `ad_status_history`), capped at each booked slot's plays (once a minute).
 - **Returned** = held − charged. This covers TVs that were off, the ad being paused, or an image that didn't load.
 - In one transaction: `held −= held`, `available += returned`, a **DEDUCT** row and a **RELEASE** row, and the billing row is marked SETTLED.
 - Sample: the checkout TV was off for 2 hours, so 1,320 aired → **charged 1,320**, **returned 120**. The wallet is now available **8,680**, held **0**.
@@ -406,7 +406,7 @@ For that day:
 - Image ads only: one image and one headline per ad.
 - Each screen loops through 6 slots of 10 seconds (one minute per loop), so a booked ad plays once a minute.
 - An ad runs in one continuous range, start_time → end_time (e.g. 1 Nov 09:00 → 3 Nov 21:00), and plays for that whole range. No store hours or daily windows.
-- An ad gets one slot on each screen it picks. Booking a slot blocks it for that range, so no other ad can use it. This is what lets screens pre-fetch the next 3 days.
+- An ad can take one or more slots on each screen it picks; each slot plays it once a minute. Booking a slot blocks it for that range, so no other ad can use it. This is what lets screens pre-fetch the next 3 days.
 - Each store has one outlet. Multi-outlet stores would need store_id + outlet_id.
 - Screen ids are UUIDs made by the server.
 
@@ -438,5 +438,5 @@ For that day:
 - One Spring Boot app and one database instead of separate services, so publish (book slots + hold credits) is a single DB transaction. Split services would need a saga.
 - Images are stored in the `ad` table (BYTEA), not in object storage behind a CDN.
 - No login or authorisation: any caller can act for any store.
-- Screen-health alerts are only listed at `GET /ops/alerts`. No SMS or email is sent to the owner.
+- Screen-health alerts are only listed at `GET /admin/alerts`. No SMS or email is sent to the owner.
 - `Idempotency-Key` on publish is optional. Without it, a double-click can create two ads (the second still needs free slots and credits).

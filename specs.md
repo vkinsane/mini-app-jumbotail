@@ -56,7 +56,7 @@ range overlaps (existing starts before the new one ends **and** ends after the n
 
 1. Credits come in only through a (mock) purchase.
 2. **Publish holds the full cost** in the same transaction that books the slots. Not enough credits → `402`, nothing is created. A booked ad can never run out of credits halfway.
-3. Cost = plays per screen × screens × price per play. Plays per screen = whole minutes in the range. One `ad_daily_billing` row per IST day holds that day's share.
+3. Cost = plays per slot × slots booked × price per play. Plays per slot = whole minutes in the range. A screen can hold several slots of the same ad. One `ad_daily_billing` row per IST day holds that day's share.
 4. **Settlement** charges only plays that actually aired, per ad per day:
    - billable = for each screen, the plays it reported inside that day's window **while the ad was ACTIVE**, never more than it booked; then add up the screens.
    - charged (`DEDUCT`) = billable × price; returned (`RELEASE`) = the rest.
@@ -206,10 +206,10 @@ the screen can drop it from its queue.
                             "imageUrl": "/api/v1/ads/6046…/image" }] } }
 ```
 
-### J24 ops (demo helpers)
+### J24 admin (demo helpers)
 
-- **`POST /ops/settlement/run?skipGrace=false`** → `{ "settled": 1, "deducted": 4, "released": 0 }`. Runs settlement now. `skipGrace=true` doesn't wait for offline screens.
-- **`GET /ops/alerts`** → `[{ "screenId": "…", "storeId": "…", "screenName": "Dairy Aisle TV", "reason": "not seen since …", "since": "…" }]`
+- **`POST /admin/settlement/run?skipGrace=false`** → `{ "settled": 1, "deducted": 4, "released": 0 }`. Runs settlement now. `skipGrace=true` doesn't wait for offline screens.
+- **`GET /admin/alerts`** → `[{ "screenId": "…", "storeId": "…", "screenName": "Dairy Aisle TV", "reason": "not seen since …", "since": "…" }]`
 
 ## 7. Screen SDK (simulated on the Screens page)
 
@@ -221,7 +221,7 @@ the screen can drop it from its queue.
   show it and write a play log. Otherwise show J24 house content (no play log, nothing billed).
 - **Offline.** Keep playing from cache and queueing logs; retry sync every 5 s; on reconnect upload
   oldest-first in batches of 500 until the queue is empty. Past `validUntil` (3 days) → house content only.
-- **Screen health.** A job every minute alerts J24 ops once per outage for screens that are INACTIVE or
+- **Screen health.** A job every minute alerts J24 admin once per outage for screens that are INACTIVE or
   haven't synced for 10 minutes; the alert clears when the screen syncs again.
 
 ## 8. Additions to the plan
@@ -234,7 +234,7 @@ Things the code needed that MiniPlan doesn't spell out:
 | `ad.image_content_type`, `created_at`, `updated_at`; `ad_daily_billing.settled_at` | Serving the image correctly; showing when things happened. |
 | Publish body has `screens: [{screenId, slotIndex?}]` | The owner picks a free slot per screen, or the server takes the lowest free one. |
 | A day settles when **the ad's window for that day** ends | Same rule as "after the day ends" for full-day ads; lets short demo ads settle without waiting for midnight. |
-| `GET /stores`, `/ops/settlement/run`, `/ops/alerts` | UI needs a store list; demo needs to trigger settlement and show J24 ops alerts. |
+| `GET /stores`, `/admin/settlement/run`, `/admin/alerts` | UI needs a store list; demo needs to trigger settlement and show J24 admin alerts. |
 | Plain-JSON publish (no image) | Easy to try with curl. The UI always sends an image. |
 | A start time in the past snaps to the current minute (more than 5 min in the past → 400); ads last 1 minute to 30 days | Never bill minutes already gone; keep billing rows bounded. |
 | Ports 8090 (backend) and 5180 (frontend) | 8080 / 5173 were already in use on the dev machine. |

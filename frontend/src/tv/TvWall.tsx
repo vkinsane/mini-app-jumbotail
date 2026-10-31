@@ -1,24 +1,18 @@
 import { useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
-import MenuItem from '@mui/material/MenuItem'
 import Stack from '@mui/material/Stack'
-import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import { api, errorMessage, type Screen } from '../api'
 import TvScreen from './TvScreen'
 
-const SYNC_INTERVALS = [
-  { ms: 15_000, label: 'Every 15 seconds (demo)' },
-  { ms: 60_000, label: 'Every minute' },
-  { ms: 300_000, label: 'Every 5 minutes (real)' },
-]
+/** Real TVs sync every 5 minutes; the demo syncs faster so changes show up quickly. */
+const SYNC_INTERVAL_MS = 15_000
 
 /** A wall of simulated TVs for one store. Each runs its own SDK: it pulls, caches and plays by itself. */
 export default function TvWall({ storeId }: { storeId: string }) {
   const [screens, setScreens] = useState<Screen[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [syncIntervalMs, setSyncIntervalMs] = useState(SYNC_INTERVALS[0].ms)
 
   useEffect(() => {
     api.screens(storeId).then(setScreens, (e) => setError(errorMessage(e)))
@@ -30,24 +24,10 @@ export default function TvWall({ storeId }: { storeId: string }) {
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6">Screens</Typography>
           <Typography variant="body2" color="text.secondary">
-            Each TV runs the J24 SDK: it pulls its 3-day playlist, plays from its cache every 10 seconds and
+            Each TV runs the J24 SDK: it pulls its 3-day playlist (every 15 seconds in this demo), plays from its cache every 10 seconds and
             uploads play logs. Turn Wi-Fi off to see offline playback; turn it back on to see the queue drain.
           </Typography>
         </Box>
-        <TextField
-          select
-          size="small"
-          label="Screen sync"
-          value={syncIntervalMs}
-          onChange={(e) => setSyncIntervalMs(Number(e.target.value))}
-          sx={{ minWidth: 230 }}
-        >
-          {SYNC_INTERVALS.map((option) => (
-            <MenuItem key={option.ms} value={option.ms}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </TextField>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}
       {screens.length === 0 && !error && <Alert severity="info">This store has no screens yet.</Alert>}
@@ -59,7 +39,7 @@ export default function TvWall({ storeId }: { storeId: string }) {
         }}
       >
         {screens.map((screen) => (
-          <TvScreen key={screen.screenId} screen={screen} syncIntervalMs={syncIntervalMs} />
+          <TvScreen key={screen.screenId} screen={screen} syncIntervalMs={SYNC_INTERVAL_MS} />
         ))}
       </Box>
     </Stack>

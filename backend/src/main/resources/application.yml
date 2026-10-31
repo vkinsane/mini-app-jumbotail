@@ -21,7 +21,7 @@ j24:
   seed-demo-data: true
   # Plays uploaded later than this after the ad's day ends are not waited for.
   settlement-grace-hours: 72
-  # A screen not seen for this long is reported to J24 ops.
+  # A screen not seen for this long is reported to J24 admin.
   screen-offline-after-minutes: 10
   # How many days of schedule a screen gets on each sync.
   playlist-days: 3

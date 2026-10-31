@@ -12,11 +12,23 @@ import { api, errorMessage, type PlayLog, type Playlist, type PlaylistItem } fro
 const IST_OFFSET_SECONDS = 5.5 * 60 * 60
 const MAX_LOGS_PER_SYNC = 500
 const RETRY_AFTER_FAILURE_MS = 5_000
+const MAX_EVENTS = 200
+
+const HOUSE_REASON: Record<Extract<Showing, { kind: 'HOUSE' }>['reason'], string> = {
+  NO_AD: 'no ad booked',
+  NO_PLAYLIST: 'no schedule yet',
+  PLAYLIST_EXPIRED: 'saved schedule is too old',
+  MEDIA_MISSING: "the ad image didn't load, so it isn't charged",
+  SCREEN_INACTIVE: 'this TV is turned off for ads',
+}
 
 export type Showing =
   | { kind: 'AD'; item: PlaylistItem; imageSrc: string | null }
   | { kind: 'HOUSE'; reason: 'NO_AD' | 'NO_PLAYLIST' | 'PLAYLIST_EXPIRED' | 'MEDIA_MISSING' | 'SCREEN_INACTIVE' }
   | { kind: 'OFF' }
+
+/** One line of the SDK's own log, shown under each TV. */
+export type SdkEvent = { at: number; kind: 'sync' | 'play' | 'slot' | 'device' | 'error'; text: string }
 
 type Stored = { playlist: Playlist | null; queue: PlayLog[]; clockOffsetMs: number; lastSyncAt: string | null }
 
@@ -26,6 +38,7 @@ export type SdkState = Stored & {
   syncing: boolean
   lastError: string | null
   playsWritten: number
+  events: SdkEvent[] // newest first, in memory only
 }
 
 const storageKey = (screenId: string) => `j24.sdk.${screenId}`
@@ -69,7 +82,12 @@ export function useScreenSdk(screenId: string, options: { online: boolean; power
     syncing: false,
     lastError: null,
     playsWritten: 0,
+    events: [],
   }))
+
+  const logEvent = useCallback((kind: SdkEvent['kind'], text: string) => {
+    setState((s) => ({ ...s, events: [{ at: Date.now(), kind, text }, ...s.events].slice(0, MAX_EVENTS) }))
+  }, [])
 
   const persist = useCallback(
     (patch: Partial<Stored>) => {
@@ -116,21 +134,40 @@ export function useScreenSdk(screenId: string, options: { online: boolean; power
         lastSyncAt: new Date(receivedAt).toISOString(),
       })
       setState((s) => ({ ...s, lastError: null }))
+      const ads = result.playlist.items.length
+      logEvent(
+        'sync',
+        `Checked in with J24. ${batch.length === 0 ? 'No plays to send' : `Sent ${batch.length} play(s)`}. ` +
+          `Schedule has ${ads === 0 ? 'no ads' : `${ads} ad(s)`}.`,
+      )
       // More logs still queued (long offline period): sync again right away.
       nextSyncAt.current = stored.current.queue.length > 0 ? 0 : Date.now() + syncIntervalMs
     } catch (e) {
       setState((s) => ({ ...s, lastError: errorMessage(e) }))
+      logEvent('error', `Couldn't reach J24 (${errorMessage(e)}). Trying again in ${RETRY_AFTER_FAILURE_MS / 1000} seconds.`)
       nextSyncAt.current = Date.now() + RETRY_AFTER_FAILURE_MS
     } finally {
       syncInFlight.current = false
       setState((s) => ({ ...s, syncing: false }))
     }
-  }, [screenId, persist, prefetchImages, syncIntervalMs])
+  }, [screenId, persist, prefetchImages, syncIntervalMs, logEvent])
 
   // On power-on and on reconnect: sync immediately.
   useEffect(() => {
     if (powered && online) nextSyncAt.current = 0
   }, [powered, online])
+
+  const firstRender = useRef(true)
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false
+      logEvent('device', stored.current.queue.length > 0 ? `TV started. ${stored.current.queue.length} play(s) waiting to be sent.` : 'TV started.')
+      return
+    }
+    if (!powered) logEvent('device', 'TV turned off. Nothing is shown.')
+    else if (!online) logEvent('device', 'Internet lost. Still showing ads from the saved schedule; plays are kept to send later.')
+    else logEvent('device', 'Internet back. Sending saved plays now.')
+  }, [powered, online, logEvent])
 
   useEffect(() => {
     nextSyncAt.current = Math.min(nextSyncAt.current, Date.now() + syncIntervalMs)
@@ -170,15 +207,18 @@ export function useScreenSdk(screenId: string, options: { online: boolean; power
           playedAt: new Date(now).toISOString(),
         }
         persist({ queue: [...stored.current.queue, log] })
+        logEvent('play', `Showed "${showing.item.name}" in slot ${slotIndex}.`)
         setState((s) => ({ ...s, showing, slotIndex, playsWritten: s.playsWritten + 1 }))
       } else {
         setState((s) => ({ ...s, showing, slotIndex }))
+        if (showing.kind === 'HOUSE')
+          logEvent(showing.reason === 'NO_AD' ? 'slot' : 'error', `Slot ${slotIndex}: showed the J24 default screen (${HOUSE_REASON[showing.reason]}).`)
       }
     }
     tick()
     const timer = setInterval(tick, 250)
     return () => clearInterval(timer)
-  }, [online, powered, sync, persist])
+  }, [online, powered, sync, persist, logEvent])
 
   const resetCache = useCallback(() => {
     images.current.clear()

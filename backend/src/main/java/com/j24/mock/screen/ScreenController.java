@@ -71,8 +71,8 @@ public class ScreenController {
         return view(screens.setStatus(screenId, request.status()));
     }
 
-    /** What J24 ops sees: screens that are INACTIVE or offline for more than 10 minutes. */
-    @GetMapping("/ops/alerts")
+    /** What J24 admin sees: screens that are INACTIVE or offline for more than 10 minutes. */
+    @GetMapping("/admin/alerts")
     public List<Alert> alerts() {
         return health.openAlerts();
     }

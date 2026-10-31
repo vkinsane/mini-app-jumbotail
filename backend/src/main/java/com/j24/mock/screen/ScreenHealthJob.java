@@ -22,8 +22,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Every minute: find screens that are INACTIVE or haven't synced for 10 minutes (2 missed syncs),
- * alert J24 ops once per outage, and clear the alert when the screen is healthy again.
- * J24 ops then tells the store owner. (The "alert" here is a log line + an in-memory list.)
+ * alert J24 admin once per outage, and clear the alert when the screen is healthy again.
+ * J24 admin then tells the store owner. (The "alert" here is a log line + an in-memory list.)
  */
 @Component
 public class ScreenHealthJob {
@@ -65,7 +65,7 @@ public class ScreenHealthJob {
         for (Alert alert : unhealthy) {
             stillUnhealthy.add(alert.screenId());
             if (openAlerts.putIfAbsent(alert.screenId(), alert) == null) {
-                log.warn("ALERT J24 ops: screen '{}' ({}) of store {} is unavailable: {}",
+                log.warn("ALERT J24 admin: screen '{}' ({}) of store {} is unavailable: {}",
                         alert.screenName(), alert.screenId(), alert.storeId(), alert.reason());
             }
         }

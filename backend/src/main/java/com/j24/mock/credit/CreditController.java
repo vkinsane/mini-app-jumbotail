@@ -47,7 +47,7 @@ public class CreditController {
     }
 
     /** Demo helper: run the settlement job now instead of waiting for the next minute. */
-    @PostMapping("/ops/settlement/run")
+    @PostMapping("/admin/settlement/run")
     public SettlementResult runSettlement(@RequestParam(defaultValue = "false") boolean skipGrace) {
         return settlement.run(skipGrace);
     }

@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -131,14 +132,16 @@ public class AdService {
         Instant start = effectiveStart(draft.startTime());
         Instant end = draft.endTime();
         validateRange(start, end);
-        requireScreens(draft.screens().stream().map(ScreenChoice::screenId).toList());
+        requireScreens(draft.screens().stream().map(ScreenChoice::screenId).distinct().toList());
 
         // 1. Wallet first: two publishes from the same store queue up here.
         Wallet wallet = credits.lockWallet(draft.storeId());
 
         // 2. Screens next, sorted by id; then re-check slots now that nobody else can book them.
-        Map<UUID, Integer> requestedSlots = new HashMap<>();
-        draft.screens().forEach(choice -> requestedSlots.put(choice.screenId(), choice.slotIndex()));
+        // A screen may appear more than once: one entry per slot the ad wants on it.
+        Map<UUID, List<Integer>> requestedSlots = new HashMap<>();
+        draft.screens().forEach(choice ->
+                requestedSlots.computeIfAbsent(choice.screenId(), id -> new ArrayList<>()).add(choice.slotIndex()));
         List<Screen> locked = screens.lockForBooking(draft.storeId(), requestedSlots.keySet());
         List<Booking> bookings = screens.chooseSlots(locked, requestedSlots, start, end);
 
