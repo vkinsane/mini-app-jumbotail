@@ -27,6 +27,33 @@ One Spring Boot app (one package per service) on one PostgreSQL database. TVs in
 
 ## 02 Database schema
 
+### At a glance
+
+- **store**: id, name, owner_name
+- **screen**: id (UUID), store_id, name, placement_type (ENTRANCE / NEAR_CHECKOUT / AISLE / OTHER), status (ACTIVE / INACTIVE), last_seen_at
+  - Every screen loops 6 slots of 10 seconds, so slots need no table of their own.
+  - Index (store_id).
+- **ad**: id, store_id, name, headline, image (bytes), start_time, end_time, status (ACTIVE / PAUSED / CANCELLED), price_per_play, total_cost
+  - Index (store_id, status).
+- **slot_booking**: id, ad_id, screen_id, slot_index, start_time, end_time, active
+  - One row per slot an ad books; one screen can hold several slots of the same ad.
+  - Index (screen_id, slot_index, start_time, end_time) → availability check.
+- **wallet**: store_id PK, available, held (neither can go below zero)
+  - Like the balance in a bank app: one row per store, updated in place.
+  - available = credits free to spend; held = credits reserved for booked ads.
+  - This row is locked during publish so two ads can't spend the same credits.
+- **credit_transactions** (only added, never edited): id, store_id, type (PURCHASE / HOLD / DEDUCT / RELEASE), amount (always positive), ad_id (which ad caused it; empty for PURCHASE)
+  - Like a bank statement: one row per change.
+  - Shows how the balance got there, e.g. PURCHASE 10,000 → HOLD 1,440 → DEDUCT 1,320 → RELEASE 120.
+  - Written together with the wallet, so the wallet can always be rebuilt from this history.
+- **ad_daily_billing** (one row per ad per day): id, ad_id, date, booked_plays, held, status (HELD / SETTLED), deducted, released
+  - booked_plays = minutes of the ad's range on that day × number of slots booked.
+  - UNIQUE (ad_id, date); index (status, date) for the settlement job.
+- **play_log**: play_id (UUID made on the TV) PK, screen_id, ad_id, slot_index, played_at
+  - Index (ad_id, screen_id, played_at) for settlement counting.
+
+### Tables in detail
+
 All sample rows below belong to **one ad on two TVs of Kirana store 1**, so you can follow the same ids across tables.
 The ad runs 1 Nov 2026, 09:00–21:00 IST: 720 plays per TV, 1,440 in total, at 1 credit per play.
 
