@@ -1,6 +1,7 @@
 # J24 In-Store Screen Ads
 
-One Spring Boot app (one package per service) on one PostgreSQL database. TVs in the store run the J24 SDK, which pulls its playlist and uploads what it played.
+Store owners book short ads on the TVs inside their own shop and pay only for the plays that actually air.
+Behind it is a single backend, split into a few clearly separated services, with one database. Each TV runs a small J24 app that fetches its schedule, keeps playing even when the internet drops, and reports back what it showed.
 
 - [01 Architecture diagram](#01-architecture-diagram)
 - [02 Database schema](#02-database-schema)
