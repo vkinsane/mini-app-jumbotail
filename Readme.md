@@ -392,16 +392,12 @@ sequenceDiagram
 - An ad runs in one continuous range, start_time → end_time (e.g. 1 Nov 09:00 → 3 Nov 21:00), and plays for that whole range. No store hours or daily windows.
 - An ad can take one or more slots on each screen it picks; each slot plays it once a minute. Booking a slot blocks it for that range, so no other ad can use it. This is what lets screens pre-fetch the next 3 days.
 - Each store has one outlet. Multi-outlet stores would need store_id + outlet_id.
-- Screen ids are UUIDs made by the server.
 
 **Credits**
-- 1 credit = ₹1 = 1 play. Whole numbers only. Price per play is fixed at 1.
+- 1 credit = ₹1 = 1 play. Price per play is fixed at 1.
 - Buying credits goes through a mock payment that always succeeds.
 - The full cost is held when the ad is published. After each day ends, the plays that actually aired (while active, never more than booked) are charged and the rest is returned.
-- Credits don't expire and are never refunded as money.
 
 **Screens and sync**
-- TVs ask for their schedule; the server never pushes. Each TV checks in every 5 minutes, on start, and when the internet comes back.
+- TVs pull the ads from the server. Each TV checks in every 5 minutes, on start, and when the internet comes back.
 - Each check-in sends the plays made since last time and gets back the full 3-day schedule.
-- The TV works out which slot is on air from the clock, using J24's time rather than its own.
-- All times are store-local IST.
