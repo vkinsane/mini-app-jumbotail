@@ -5,11 +5,21 @@
 - One backend, split into a few clearly separated services, with one database.
 - Each TV runs a small J24 app: it fetches its schedule, keeps playing when the internet drops, and reports back what it showed.
 
+- [Demo](#demo)
 - [01 Architecture diagram](#01-architecture-diagram)
 - [02 Database schema](#02-database-schema)
 - [03 API endpoints](#03-api-endpoints)
 - [04 How credits work](#04-how-credits-work)
 - [05 Assumptions](#05-assumptions)
+
+---
+
+## Demo
+
+[![Publishing an ad in the owner console](docs/ad-publish-demo.gif)](docs/ad-publish-demo.mp4)
+
+- Creating an ad in 3 steps: ad details → screens and slots → review and publish.
+- The preview runs at 2× speed; click it for the full video.
 
 ---
 
