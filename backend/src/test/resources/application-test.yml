@@ -1,0 +1,6 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/j24mock_test}
+
+j24:
+  seed-demo-data: false

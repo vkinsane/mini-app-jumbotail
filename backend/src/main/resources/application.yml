@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: j24-mock
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/j24mock}
+    username: ${DB_USER:${USER}}
+    password: ${DB_PASSWORD:}
+  sql:
+    init:
+      mode: always
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
+server:
+  port: ${PORT:8090}
+
+j24:
+  # Create 2 demo stores (5 screens, 10,000 credits each) on first start.
+  seed-demo-data: true
+  # Plays uploaded later than this after the ad's day ends are not waited for.
+  settlement-grace-hours: 72
+  # A screen not seen for this long is reported to J24 ops.
+  screen-offline-after-minutes: 10
+  # How many days of schedule a screen gets on each sync.
+  playlist-days: 3
+
+logging:
+  level:
+    com.j24.mock: INFO

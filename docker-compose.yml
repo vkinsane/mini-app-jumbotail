@@ -1,0 +1,12 @@
+# Optional: a throwaway Postgres for the backend if you don't have one locally.
+#   docker compose up -d
+#   DB_URL=jdbc:postgresql://localhost:5433/j24mock DB_USER=j24 DB_PASSWORD=j24 ./mvnw spring-boot:run
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: j24mock
+      POSTGRES_USER: j24
+      POSTGRES_PASSWORD: j24
+    ports:
+      - "5433:5432"
