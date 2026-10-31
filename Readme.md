@@ -19,10 +19,9 @@ One Spring Boot app (one package per service) on one PostgreSQL database. TVs in
 |---|---|---|
 | Store Manager | `store` | Onboards a store and creates its empty wallet |
 | Screen Manager | `screen`, `slot_booking` | Registers TVs, tracks last sync, books and frees slots |
-| Ad Manager | `ad`, `ad_status_history` | Availability, publish, pause, resume, cancel |
+| Ad Manager | `ad` | Availability, publish, pause, resume, cancel |
 | Credit Manager | `wallet`, `credit_transactions`, `ad_daily_billing` | Buy credits, hold at publish, charge or return at settlement |
 | Ad Server | `play_log` | Gives each TV its 3-day playlist, stores the plays it reports |
-| Jobs | — | Settlement every minute; alert when a TV hasn't synced for 10 minutes |
 
 ---
 
@@ -39,20 +38,14 @@ One row per shop that uses J24.
 |---|---|---|
 | id | UUID PK | Made by the server |
 | owner_name | TEXT NOT NULL | Who runs the shop |
-| phone | TEXT | Owner's phone |
 | name | TEXT NOT NULL | Shop name shown in the console |
-| address | TEXT | Free text |
-| created_at | TIMESTAMPTZ NOT NULL | When it was onboarded |
 
 Sample row
 ```json
 {
   "id": "store_kirana_1",
   "owner_name": "Ramesh Sharma",
-  "phone": "9876543210",
-  "name": "Kirana store 1",
-  "address": "MG Road, Bengaluru",
-  "created_at": "2026-10-30T10:00:00+05:30"
+  "name": "Kirana store 1"
 }
 ```
 
@@ -66,12 +59,8 @@ One row per TV. Each TV loops 6 slots of 10 seconds, so there is no separate slo
 | store_id | UUID NOT NULL FK | The store the TV is in |
 | name | TEXT NOT NULL | e.g. "Entrance TV" |
 | placement_type | TEXT NOT NULL | ENTRANCE / NEAR_CHECKOUT / AISLE / OTHER |
-| width_pixels / height_pixels | INT | Screen resolution |
-| slots_per_loop | INT NOT NULL DEFAULT 6 | Slots in one loop |
-| slot_duration_seconds | INT NOT NULL DEFAULT 10 | Length of one slot |
 | status | TEXT NOT NULL | ACTIVE / INACTIVE. Inactive TVs can't be booked and show house content |
 | last_seen_at | TIMESTAMPTZ | Last sync. More than 10 minutes old → screen-health alert |
-| created_at | TIMESTAMPTZ NOT NULL | Row creation |
 
 Index: `(store_id)`.
 
@@ -83,8 +72,6 @@ Sample rows
     "store_id": "store_kirana_1",
     "name": "Entrance TV",
     "placement_type": "ENTRANCE",
-    "width_pixels": 1920, "height_pixels": 1080,
-    "slots_per_loop": 6, "slot_duration_seconds": 10,
     "status": "ACTIVE",
     "last_seen_at": "2026-11-01T21:03:00+05:30"
   },
@@ -93,8 +80,6 @@ Sample rows
     "store_id": "store_kirana_1",
     "name": "Checkout TV",
     "placement_type": "NEAR_CHECKOUT",
-    "width_pixels": 1920, "height_pixels": 1080,
-    "slots_per_loop": 6, "slot_duration_seconds": 10,
     "status": "ACTIVE",
     "last_seen_at": "2026-11-01T21:04:00+05:30"
   }
@@ -111,13 +96,11 @@ What the owner wants to show, for how long, and what it costs. The image is stor
 | store_id | UUID NOT NULL FK | Owner's store |
 | name | TEXT NOT NULL | Internal name |
 | headline | TEXT NOT NULL | Text shown over the image |
-| image / image_content_type | BYTEA / TEXT | The picture; TVs download it once and cache it |
+| image | BYTEA | The picture; TVs download it once and cache it |
 | start_time / end_time | TIMESTAMPTZ NOT NULL | One continuous range; `end_time > start_time` |
 | status | TEXT NOT NULL | ACTIVE / PAUSED / CANCELLED. "ENDED" isn't stored: it's an ACTIVE or PAUSED ad past its end_time |
 | price_per_play | BIGINT NOT NULL | 1 credit |
-| total_cost | BIGINT NOT NULL | Plays per TV × TVs × price; held at publish |
-| idempotency_key | TEXT UNIQUE | From the optional `Idempotency-Key` header, so a retried publish returns the first ad |
-| created_at / updated_at | TIMESTAMPTZ NOT NULL | Row creation / last change |
+| total_cost | BIGINT NOT NULL | Plays per slot × slots booked × price; held at publish |
 
 Index: `(store_id, status)`.
 
@@ -128,43 +111,20 @@ Sample row
   "store_id": "store_kirana_1",
   "name": "Diwali sale",
   "headline": "Flat 20% off on sweets",
-  "image_content_type": "image/png",
   "start_time": "2026-11-01T09:00:00+05:30",
   "end_time": "2026-11-01T21:00:00+05:30",
   "status": "ACTIVE",
   "price_per_play": 1,
-  "total_cost": 1440,
-  "idempotency_key": "publish-7f3a",
-  "created_at": "2026-10-31T18:00:00+05:30",
-  "updated_at": "2026-10-31T18:00:00+05:30"
+  "total_cost": 1440
 }
 ```
 
-### 4. ad_status_history
-
-Every status change, so settlement knows whether the ad was ACTIVE when each play happened. Plays made while paused are not charged, even if an offline TV kept showing the ad.
-
-| Column | Type | Notes |
-|---|---|---|
-| id | BIGSERIAL PK | |
-| ad_id | UUID NOT NULL FK | The ad |
-| status | TEXT NOT NULL | The new status |
-| changed_at | TIMESTAMPTZ NOT NULL | When it changed |
-
-Index: `(ad_id, changed_at)`.
-
-Sample row
-```json
-{ "id": 1, "ad_id": "ad_diwali_sale", "status": "ACTIVE", "changed_at": "2026-10-31T18:00:00+05:30" }
-```
-
-### 5. slot_booking
+### 4. slot_booking
 
 One ad on one slot of one TV for a time range. Belongs to Screen Manager because slots belong to a screen.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
 | ad_id | UUID NOT NULL FK | The ad that booked it |
 | screen_id | UUID NOT NULL FK | The TV |
 | slot_index | INT NOT NULL | 0–5 |
@@ -178,14 +138,14 @@ A slot is free when no active booking on the same TV and slot overlaps the new r
 Sample rows
 ```json
 [
-  { "id": "booking_1", "ad_id": "ad_diwali_sale", "screen_id": "screen_entrance", "slot_index": 2,
+  { "ad_id": "ad_diwali_sale", "screen_id": "screen_entrance", "slot_index": 2,
     "start_time": "2026-11-01T09:00:00+05:30", "end_time": "2026-11-01T21:00:00+05:30", "active": true },
-  { "id": "booking_2", "ad_id": "ad_diwali_sale", "screen_id": "screen_checkout", "slot_index": 0,
+  { "ad_id": "ad_diwali_sale", "screen_id": "screen_checkout", "slot_index": 0,
     "start_time": "2026-11-01T09:00:00+05:30", "end_time": "2026-11-01T21:00:00+05:30", "active": true }
 ]
 ```
 
-### 6. wallet
+### 5. wallet
 
 The store's current balance, one row per store. Locked with `FOR UPDATE` in publish, so two ads can't spend the same credits.
 
@@ -200,46 +160,42 @@ Sample row (after the day is settled)
 { "store_id": "store_kirana_1", "available": 8680, "held": 0 }
 ```
 
-### 7. credit_transactions
+### 6. credit_transactions
 
 The statement: every credit movement, never edited. Written in the same transaction as the wallet change.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | BIGSERIAL PK | |
 | store_id | UUID NOT NULL FK | Whose credits |
 | type | TEXT NOT NULL | PURCHASE (bought) / HOLD (reserved at publish) / DEDUCT (charged for plays) / RELEASE (returned) |
 | amount | BIGINT NOT NULL, > 0 | Always positive; the type says the direction |
 | ad_id | UUID FK | The ad behind the movement; null for PURCHASE |
-| created_at | TIMESTAMPTZ NOT NULL | When it happened |
 
-Index: `(store_id, created_at)`.
+Index: `(store_id)`.
 
 Sample rows
 ```json
 [
-  { "id": 1, "store_id": "store_kirana_1", "type": "PURCHASE", "amount": 10000, "ad_id": null,             "created_at": "2026-10-30T10:00:00+05:30" },
-  { "id": 2, "store_id": "store_kirana_1", "type": "HOLD",     "amount": 1440,  "ad_id": "ad_diwali_sale", "created_at": "2026-10-31T18:00:00+05:30" },
-  { "id": 3, "store_id": "store_kirana_1", "type": "DEDUCT",   "amount": 1320,  "ad_id": "ad_diwali_sale", "created_at": "2026-11-01T21:05:00+05:30" },
-  { "id": 4, "store_id": "store_kirana_1", "type": "RELEASE",  "amount": 120,   "ad_id": "ad_diwali_sale", "created_at": "2026-11-01T21:05:00+05:30" }
+  { "store_id": "store_kirana_1", "type": "PURCHASE", "amount": 10000, "ad_id": null },
+  { "store_id": "store_kirana_1", "type": "HOLD",     "amount": 1440,  "ad_id": "ad_diwali_sale" },
+  { "store_id": "store_kirana_1", "type": "DEDUCT",   "amount": 1320,  "ad_id": "ad_diwali_sale" },
+  { "store_id": "store_kirana_1", "type": "RELEASE",  "amount": 120,   "ad_id": "ad_diwali_sale" }
 ]
 ```
 
-### 8. ad_daily_billing
+### 7. ad_daily_billing
 
 One row per ad per IST day: how much was held for that day and how it was settled.
 
 | Column | Type | Notes |
 |---|---|---|
-| id | UUID PK | |
 | ad_id | UUID NOT NULL FK | The ad |
 | date | DATE NOT NULL | IST day; UNIQUE `(ad_id, date)` |
 | booked_plays | INT NOT NULL | Plays booked that day across all its TVs |
 | held | BIGINT NOT NULL | Credits held for that day |
 | status | TEXT NOT NULL | HELD / SETTLED |
-| deducted | BIGINT NOT NULL DEFAULT 0 | Charged: plays that aired while ACTIVE, capped per TV |
+| deducted | BIGINT NOT NULL DEFAULT 0 | Charged: plays that aired while ACTIVE, capped per booked slot |
 | released | BIGINT NOT NULL DEFAULT 0 | Returned: `held − deducted`. CHECK `deducted + released = held` once settled |
-| settled_at | TIMESTAMPTZ | When settlement ran |
 
 Index: `(status, date)` for the settlement job, which picks rows with `FOR UPDATE SKIP LOCKED`.
 
@@ -248,19 +204,17 @@ A day settles once it is over and every TV of the ad has synced since, or after 
 Sample row (the checkout TV was off for 2 hours, so 120 plays didn't air)
 ```json
 {
-  "id": "billing_2026_11_01",
   "ad_id": "ad_diwali_sale",
   "date": "2026-11-01",
   "booked_plays": 1440,
   "held": 1440,
   "status": "SETTLED",
   "deducted": 1320,
-  "released": 120,
-  "settled_at": "2026-11-01T21:05:00+05:30"
+  "released": 120
 }
 ```
 
-### 9. play_log
+### 8. play_log
 
 One row per play a TV reports. The TV makes `play_id`, so uploading the same batch twice counts it once (`ON CONFLICT DO NOTHING`).
 
@@ -271,7 +225,6 @@ One row per play a TV reports. The TV makes `play_id`, so uploading the same bat
 | ad_id | UUID NOT NULL FK | Which ad |
 | slot_index | INT NOT NULL | Which slot |
 | played_at | TIMESTAMPTZ NOT NULL | TV time, corrected with the server-time offset |
-| received_at | TIMESTAMPTZ NOT NULL | When it reached the server; can be days later after an outage |
 
 Index: `(ad_id, screen_id, played_at)` for settlement counting.
 
@@ -282,8 +235,7 @@ Sample row
   "screen_id": "screen_entrance",
   "ad_id": "ad_diwali_sale",
   "slot_index": 2,
-  "played_at": "2026-11-01T09:00:20+05:30",
-  "received_at": "2026-11-01T09:05:00+05:30"
+  "played_at": "2026-11-01T09:00:20+05:30"
 }
 ```
 
@@ -327,10 +279,14 @@ All paths start with `/api/v1`. Errors always come back as `{code, message, ...d
   - `playlist` = `{validUntil (now + 3 days), items: [{adId, slotIndex, startTime, endTime, imageUrl, ...}], ...}`, always the full 3 days.
   - The TV removes the received ids from its queue and plays by clock: slot = (seconds since midnight IST ÷ 10) mod 6.
 
-### J24 admin (demo helpers)
+### J24 admin
 
-- **Run settlement now**: `POST /admin/settlement/run?skipGrace=false` → `{settled, deducted, released}`. `skipGrace=true` doesn't wait for offline TVs.
-- **Screen alerts**: `GET /admin/alerts` → `[{screenId, reason, since, ...}]` for TVs that are inactive or haven't synced in 10 minutes.
+Two tools for the J24 team. Store owners never call these.
+
+| What the admin wants | Call | What happens |
+|---|---|---|
+| Close the books now instead of waiting | `POST /admin/settlement/run` | Settlement normally runs on its own every minute. This runs it right away: for every ad-day that has finished, it charges the plays that aired and returns the rest to the wallet. Returns how many days were settled and how many credits were charged and returned. Add `?skipGrace=true` to settle without waiting for TVs that are still offline (their unsent plays won't be charged). |
+| See which TVs need attention | `GET /admin/alerts` | Lists TVs that are switched off for ads or haven't checked in for 10 minutes, with the reason and since when. J24 uses this to tell the store owner a screen is down. |
 
 ---
 
@@ -382,7 +338,7 @@ The settlement job runs every minute. It picks a HELD `ad_daily_billing` row whe
 
 For that day:
 
-- **Charged** = plays in `play_log` while the ad was ACTIVE (from `ad_status_history`), capped at each booked slot's plays (once a minute).
+- **Charged** = plays in `play_log` while the ad was ACTIVE (not paused), capped at each booked slot's plays (once a minute).
 - **Returned** = held − charged. This covers TVs that were off, the ad being paused, or an image that didn't load.
 - In one transaction: `held −= held`, `available += returned`, a **DEDUCT** row and a **RELEASE** row, and the billing row is marked SETTLED.
 - Sample: the checkout TV was off for 2 hours, so 1,320 aired → **charged 1,320**, **returned 120**. The wallet is now available **8,680**, held **0**.
