@@ -33,12 +33,9 @@ Behind it is a single backend, split into a few clearly separated services, with
 - **store**: id, name, owner_name
 - **screen**: id (UUID), store_id, name, placement_type (ENTRANCE / NEAR_CHECKOUT / AISLE / OTHER), status (ACTIVE / INACTIVE), last_seen_at
   - Every screen loops 6 slots of 10 seconds, so slots need no table of their own.
-  - Index (store_id).
 - **ad**: id, store_id, name, headline, image (bytes), start_time, end_time, status (ACTIVE / PAUSED / CANCELLED), price_per_play, total_cost
-  - Index (store_id, status).
 - **slot_booking**: id, ad_id, screen_id, slot_index, start_time, end_time, active
   - One row per slot an ad books; one screen can hold several slots of the same ad.
-  - Index (screen_id, slot_index, start_time, end_time) → availability check.
 - **wallet**: store_id PK, available, held (neither can go below zero)
   - Like the balance in a bank app: one row per store, updated in place.
   - available = credits free to spend; held = credits reserved for booked ads.
@@ -49,9 +46,7 @@ Behind it is a single backend, split into a few clearly separated services, with
   - Written together with the wallet, so the wallet can always be rebuilt from this history.
 - **ad_daily_billing** (one row per ad per day): id, ad_id, date, booked_plays, held, status (HELD / SETTLED), deducted, released
   - booked_plays = minutes of the ad's range on that day × number of slots booked.
-  - UNIQUE (ad_id, date); index (status, date) for the settlement job.
 - **play_log**: play_id (UUID made on the TV) PK, screen_id, ad_id, slot_index, played_at
-  - Index (ad_id, screen_id, played_at) for settlement counting.
 
 ### Tables in detail
 
@@ -89,8 +84,6 @@ One row per TV. Each TV loops 6 slots of 10 seconds, so there is no separate slo
 | placement_type | TEXT NOT NULL | ENTRANCE / NEAR_CHECKOUT / AISLE / OTHER |
 | status | TEXT NOT NULL | ACTIVE / INACTIVE. Inactive TVs can't be booked and show house content |
 | last_seen_at | TIMESTAMPTZ | Last sync. More than 10 minutes old → screen-health alert |
-
-Index: `(store_id)`.
 
 Sample rows
 ```json
@@ -130,8 +123,6 @@ What the owner wants to show, for how long, and what it costs. The image is stor
 | price_per_play | BIGINT NOT NULL | 1 credit |
 | total_cost | BIGINT NOT NULL | Plays per slot × slots booked × price; held at publish |
 
-Index: `(store_id, status)`.
-
 Sample row
 ```json
 {
@@ -158,8 +149,6 @@ One ad on one slot of one TV for a time range. Belongs to Screen Manager because
 | slot_index | INT NOT NULL | 0–5 |
 | start_time / end_time | TIMESTAMPTZ NOT NULL | Copied from the ad |
 | active | BOOLEAN NOT NULL DEFAULT TRUE | Set to false on cancel, which frees the slot. Pause keeps it true |
-
-Indexes: `(screen_id, slot_index, start_time, end_time)` for availability; `(ad_id)`.
 
 A slot is free when no active booking on the same TV and slot overlaps the new range.
 
@@ -199,8 +188,6 @@ The statement: every credit movement, never edited. Written in the same transact
 | amount | BIGINT NOT NULL, > 0 | Always positive; the type says the direction |
 | ad_id | UUID FK | The ad behind the movement; null for PURCHASE |
 
-Index: `(store_id)`.
-
 Sample rows
 ```json
 [
@@ -224,8 +211,6 @@ One row per ad per IST day: how much was held for that day and how it was settle
 | status | TEXT NOT NULL | HELD / SETTLED |
 | deducted | BIGINT NOT NULL DEFAULT 0 | Charged: plays that aired while ACTIVE, capped per booked slot |
 | released | BIGINT NOT NULL DEFAULT 0 | Returned: `held − deducted`. CHECK `deducted + released = held` once settled |
-
-Index: `(status, date)` for the settlement job, which picks rows with `FOR UPDATE SKIP LOCKED`.
 
 A day settles once it is over and every TV of the ad has synced since, or after 72 hours.
 
@@ -254,8 +239,6 @@ One row per play a TV reports. The TV makes `play_id`, so uploading the same bat
 | slot_index | INT NOT NULL | Which slot |
 | played_at | TIMESTAMPTZ NOT NULL | TV time, corrected with the server-time offset |
 
-Index: `(ad_id, screen_id, played_at)` for settlement counting.
-
 Sample row
 ```json
 {
@@ -270,8 +253,6 @@ Sample row
 ---
 
 ## 03 API endpoints
-
-All paths start with `/api/v1`. Errors always come back as `{code, message, ...details}`. Full sample payloads are in [`specs.md`](specs.md#6-apis-apiv1).
 
 ### Store and screens
 
