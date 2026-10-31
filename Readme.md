@@ -16,10 +16,12 @@
 
 ## Demo
 
-[![Publishing an ad in the owner console](docs/ad-publish-demo.gif)](docs/ad-publish-demo.mp4)
+[![Publishing an ad in the owner console](docs/ad-publish-demo.gif)](https://drive.google.com/file/d/1DtgBOuL_mczltXjoMlDtec0xhlyWE_Nu/view?usp=sharing)
+
+▶ **[Watch the full video on Google Drive](https://drive.google.com/file/d/1DtgBOuL_mczltXjoMlDtec0xhlyWE_Nu/view?usp=sharing)**
 
 - Creating an ad in 3 steps: ad details → screens and slots → review and publish.
-- The preview runs at 2× speed; click it for the full video.
+- The preview above runs at 2× speed.
 
 ---
 
