@@ -301,6 +301,7 @@ Sample row
 - **Publish an ad** · `POST /ads`
   - Books the chosen slots and holds the full cost, all at once.
   - Fails if credits are short or someone took the slot in the meantime.
+  - Safe when two people publish at once: the wallet and the chosen TVs are locked while publishing, so the second publish waits, then sees the lower balance and the taken slot.
   - One TV can hold more than one slot of the same ad.
 - **Pause / resume** · `POST /ads/{adId}/pause`, `POST /ads/{adId}/resume`
   - No credits move now; plays skipped while paused are returned at settlement.
@@ -393,6 +394,7 @@ sequenceDiagram
 | Plays uploaded after their day settled | Stored, not charged. J24 absorbs it |
 | Same plays sent twice | Each play has its own id, so it counts once |
 | Two publishes at once | The second waits for the first, then sees the lower balance and is refused if short |
+| Two ads want the same slot at once | Only the first gets it; the second is told the slot is taken and no credits are held |
 
 ---
 

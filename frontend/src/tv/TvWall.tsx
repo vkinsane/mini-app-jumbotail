@@ -23,10 +23,6 @@ export default function TvWall({ storeId }: { storeId: string }) {
       <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 2, alignItems: { sm: 'center' } }}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="h6">Screens</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Each TV runs the J24 SDK: it pulls its 3-day playlist (every 15 seconds in this demo), plays from its cache every 10 seconds and
-            uploads play logs. Turn Wi-Fi off to see offline playback; turn it back on to see the queue drain.
-          </Typography>
         </Box>
       </Stack>
       {error && <Alert severity="error">{error}</Alert>}

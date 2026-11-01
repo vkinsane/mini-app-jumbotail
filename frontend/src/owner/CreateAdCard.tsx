@@ -177,7 +177,7 @@ export default function CreateAdCard(props: {
         <Typography variant="h6">Create an ad</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Each screen loops 6 slots of 10 seconds. Every slot you pick plays your ad once a minute.
-          1 play = 1 credit. The full cost is held now; you only pay for plays that actually air.
+          1 play = 1 credit. Credits are reserved now. You pay only for plays shown; unused credits are refunded.
         </Typography>
 
         <Stepper activeStep={step} sx={{ mb: 3 }}>
